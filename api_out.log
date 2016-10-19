@@ -1,6 +1,0 @@
-10/19/2016 10:58:13 AM Starting new HTTP connection (1): 192.168.11.5
-10/19/2016 10:58:13 AM "GET /Sessions HTTP/1.1" 401 None
-10/19/2016 10:58:54 AM Starting new HTTP connection (1): 192.168.11.5
-10/19/2016 10:58:54 AM "GET /Sessions?api_key=756f3df058ad410c96ee14844e76b001 HTTP/1.1" 200 443
-10/19/2016 01:04:44 PM Starting new HTTP connection (1): 192.168.11.5
-10/19/2016 01:04:44 PM "GET /Sessions?api_key=756f3df058ad410c96ee14844e76b001 HTTP/1.1" 200 443

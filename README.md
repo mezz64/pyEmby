@@ -47,5 +47,5 @@ def previous_track(self, session):
 def get_image(self, item_id, style, played=0):
 """Return media image."""
 
-def get_latest_items(self, session, limit=3, is_played='false', included_item_types='episode'):
+def get_latest_items(self, session, limit=3, is_played='false', include_item_types='episode'):
 """Return 3 most recent library episode additions."""

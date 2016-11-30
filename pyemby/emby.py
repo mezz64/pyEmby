@@ -98,3 +98,18 @@ class EmbyRemote(object):
         """Return media image."""
         return '{0}/Items/{1}/Images/{2}?api_key={3}&PercentPlayed={4}'.format(
             self.server_url, item_id, style, self.api_key, played)
+
+    def get_latest_items(self, session, limit=3, is_played='false',
+                        include_item_types='episode'):
+        """Return XX most recent movie or episode additions to library"""
+        query = 'IncludeItemTypes={0}&Limit={1}&IsPlayed={2}'.format(
+                include_item_types, limit, is_played)
+        try:
+             response = self.emby_request.get(self.server_url+'/Users/{0}/Items/Latest?{1}'.format(session['UserId'],
+                                              query))
+        except KeyError as err:
+            _LOGGER.error('Requests error getting key: %s', err)
+            return
+        else:
+             recent_items = response.json()
+             return recent_items

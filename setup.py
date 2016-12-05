@@ -16,12 +16,12 @@ from distutils.core import setup
 setup(
     name='pyEmby',
     packages=['pyemby'],
-    version='0.1',
+    version='0.2',
     description='Provides a python interface to interact with a Emby media server.',
     author='John Mihalic',
     author_email='mezz64@users.noreply.github.com',
     url='https://github.com/mezz64/pyemby',
-    download_url = 'https://github.com/mezz64/pyemby/tarball/0.1',
+    download_url = 'https://github.com/mezz64/pyemby/tarball/0.2',
     keywords= ['emby', 'media sever', 'api wrapper'],
     classifiers = [],
     )

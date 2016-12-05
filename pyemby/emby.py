@@ -106,8 +106,8 @@ class EmbyRemote(object):
         query = query.format(include_item_types, limit, is_played)
         try:
             response = self.emby_request.get(
-                self.server_url + '/Users/{0}/Items/Latest?{1}'.
-                format(session['UserId'], query))
+                            self.server_url + '/Users/{0}/Items/Latest?{1}'.
+                            format(session['UserId'], query))
         except (KeyError, requests.exceptions.RequestException) as err:
             _LOGGER.error('Requests error getting latest media: %s', err)
             return

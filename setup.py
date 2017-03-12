@@ -1,4 +1,4 @@
-# Copyright (c) 2016 John Mihalic <https://github.com/mezz64>
+# Copyright (c) 2017 John Mihalic <https://github.com/mezz64>
 # Licensed under the MIT license.
 
 # Used this guide to create module
@@ -16,12 +16,12 @@ from distutils.core import setup
 setup(
     name='pyEmby',
     packages=['pyemby'],
-    version='0.2',
+    version='1.0',
     description='Provides a python interface to interact with a Emby media server.',
     author='John Mihalic',
     author_email='mezz64@users.noreply.github.com',
     url='https://github.com/mezz64/pyemby',
-    download_url = 'https://github.com/mezz64/pyemby/tarball/0.2',
+    download_url = 'https://github.com/mezz64/pyemby/tarball/1.0',
     keywords= ['emby', 'media sever', 'api wrapper'],
     classifiers = [],
     )

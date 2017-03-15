@@ -20,7 +20,6 @@ from pyemby.constants import (
     STATE_PAUSED, STATE_PLAYING, STATE_IDLE)
 from pyemby.helpers import deprecated_name
 
-
 _LOGGER = logging.getLogger(__name__)
 
 # pylint: disable=invalid-name,no-member

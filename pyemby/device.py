@@ -4,6 +4,7 @@ pyemby.device
 Device access class.
 Copyright (c) 2017 John Mihalic <https://github.com/mezz64>
 Licensed under the MIT license.
+
 """
 
 import logging

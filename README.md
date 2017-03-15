@@ -4,48 +4,47 @@ This is a python module aiming to interact with the Emby Media Server (http://em
 
 Code is licensed under the MIT license.
 
+# Version Change
+
+Version 1.0 utilizes python's asyncio module to perform communication with the emby server over websockets and http.  Polling is no longer required to recieve device updates and many callback options are available.
+
+Version 0.2 and below utilized the requests library and provided a simplistic interface to the emby api.
+
+If you do not wish to incorporate the new ayncio platform please utilize Version 0.2 via it's git tag or as found in the "original" branch on this repository.
+
+# Requirements
+Mostly standard libraries are used:
+* json
+* uuid
+* asyncio
+* aiohttp
+* async_timeout
+
+# Installation
+
+```pip install pyemby```
+
+
 Getting Started
 ===============
 
-# Usage
+# In Use
+
+This library was created primarily for use with Home-Assistant.  The source code for the "Emby" media_player component is a full example of library usage.
+
+# Basic Example
 
 ```python
-import pyemby.emby
+from pyemby import EmbyServer
 
-Emby = pyemby.emby.EmbyRemote('api_key', 'http://192.168.1.5:8096')
+emby = EmbyServer(host, api_key, port=8096, ssl=False, loop=None)
+
+emby.add_new_devices_callback(device_update_callback)
+
+emby.add_stale_devices_callback(device_removal_callback)
+
+
+emby.start()
+
 ```
 
-# Methods
-
-def unique_id(self):
-"""Return unique ID for connection to Emby."""
-
-def get_sessions_url(self):
-"""Return the session url."""
-
-def get_sessions(self):
-"""Return active client sessions."""
-
-def set_playstate(self, session, state):
-"""Send media commands to client."""
-       
-def play(self, session):
-"""Call play command."""
-
-def pause(self, session):
-"""Call pause command."""
-
-def stop(self, session):
-"""Call stop command."""
-
-def next_track(self, session):
-"""Call next track command."""
-
-def previous_track(self, session):
-"""Call previous track command."""
-
-def get_image(self, item_id, style, played=0):
-"""Return media image."""
-
-def get_latest_items(self, session, limit=3, is_played='false', include_item_types='episode'):
-"""Return 3 most recent library episode additions."""

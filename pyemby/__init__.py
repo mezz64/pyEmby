@@ -1,8 +1,11 @@
-# from .alarm_state import AlarmState
-# from .envisalink_base_client import EnvisalinkClient
-# from .honeywell_client import HoneywellClient
-# from .dsc_client import DSCClient
-# from .alarm_panel import EnvisalinkAlarmPanel
-# from .emby import EmbyInstance
+"""
+pyemby.__init__
+~~~~~~~~~~~~~~~~~~~~
+Initialization for pyEmby
+Copyright (c) 2017 John Mihalic <https://github.com/mezz64>
+Licensed under the MIT license.
+
+"""
+
 from .server import EmbyServer
 from .device import EmbyDevice

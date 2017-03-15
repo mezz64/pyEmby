@@ -7,20 +7,12 @@ Licensed under the MIT license.
 """
 
 import logging
-
 import asyncio
 
 from pyemby.constants import (
     STATE_PAUSED, STATE_PLAYING, STATE_IDLE, STATE_OFF, API_URL)
 
 _LOGGER = logging.getLogger(__name__)
-
-# pylint: disable=invalid-name,no-member
-try:
-    ensure_future = asyncio.ensure_future
-except AttributeError:
-    # Python 3.4.3 and earlier has this as async
-    ensure_future = asyncio.async
 
 
 class EmbyDevice(object):
@@ -117,6 +109,34 @@ class EmbyDevice(object):
             return None
 
     @property
+    def media_album_name(self):
+        """Album name of current playing media (Music track only)."""
+        try:
+            return self.session['NowPlayingItem']['Album']
+        except KeyError:
+            return None
+
+    @property
+    def media_artist(self):
+        """Artist of current playing media (Music track only)."""
+        try:
+            artists = self.session['NowPlayingItem']['Artists']
+            if len(artists) > 1:
+                return artists[0]
+            else:
+                return artists
+        except KeyError:
+            return None
+
+    @property
+    def media_album_artist(self):
+        """Album artist of current playing media (Music track only)."""
+        try:
+            return self.session['NowPlayingItem']['AlbumArtist']
+        except KeyError:
+            return None
+
+    @property
     def media_id(self):
         """ Return title currently playing."""
         try:
@@ -165,7 +185,8 @@ class EmbyDevice(object):
     def media_runtime(self):
         """ Return total runtime length."""
         try:
-            return int(self.session['NowPlayingItem']['RunTimeTicks']) / 10000000
+            return int(
+                self.session['NowPlayingItem']['RunTimeTicks']) / 10000000
         except KeyError:
             return None
 

@@ -30,8 +30,6 @@ except AttributeError:
     # Python 3.4.3 and earlier has this as async
     ensure_future = asyncio.async
 
-# ws://192.168.11.5:8096?DeviceId=pyEmbyTEST&api_key=756f3df058ad410c96ee14844e76b001
-
 """
 Some general project notes that don't fit anywhere else:
 
@@ -42,12 +40,8 @@ Can request session updates via:
 {"MessageType":"SessionsStart", "Data": "0,1500"}
 {"MessageType":"SessionsStop", "Data": ""}
 
-http api and websocket connection should be handled async,
+Http api and websocket connection are handled async,
 everything else can be done with normal methods
-
-Work to do on existing pyEmby:
-Existing command functions should be fine as-is.
-Implement async websocket connection to server to get updates.
 """
 
 
@@ -78,7 +72,6 @@ class EmbyServer(object):
         # self._event_loop.set_debug(True)
 
         self._api_id = uuid.getnode()
-        _LOGGER.debug('API ID: %s', self._api_id)
 
         headers = DEFAULT_HEADERS.copy()
         headers.update({'x-emby-authorization':
@@ -87,8 +80,6 @@ class EmbyServer(object):
                         'DeviceId="{}",'
                         'Version="{}"'.format(
                             self._api_id, __version__)})
-
-        _LOGGER.debug('HEADERS: %s', headers)
 
         self._api_session = aiohttp.ClientSession(
             headers=headers, loop=self._event_loop)
@@ -132,7 +123,7 @@ class EmbyServer(object):
     def _do_new_devices_callback(self, msg):
         """Call registered callback functions."""
         for callback in self._new_devices_callbacks:
-            _LOGGER.debug('New Devices callback %s', callback)
+            _LOGGER.debug('Devices callback %s', callback)
             self._event_loop.call_soon(callback, msg)
 
     def add_stale_devices_callback(self, callback):
@@ -155,7 +146,8 @@ class EmbyServer(object):
         """ Remove a registered update callback. """
         if [callback, device] in self._update_callbacks:
             self._update_callbacks.remove([callback, device])
-            _LOGGER.debug('Removed update callback %s for %s', callback, device)
+            _LOGGER.debug('Removed update callback %s for %s',
+                          callback, device)
 
     def _do_update_callback(self, msg):
         """Call registered callback functions."""
@@ -188,9 +180,6 @@ class EmbyServer(object):
         if self._own_loop:
             _LOGGER.info("Shutting down Emby server loop...")
             self._event_loop.call_soon_threadsafe(self._event_loop.stop)
-        else:
-            _LOGGER.info("An event loop was given to us- we will shutdown when"
-                         " that event loop shuts down.")
 
     def construct_url(self, style):
         """ Return http/https or ws/wss url. """
@@ -216,10 +205,10 @@ class EmbyServer(object):
         reg = yield from self.api_request(url, params)
         if reg is None:
             self._registered = False
-            _LOGGER.debug('Unable to register.')
+            _LOGGER.error('Unable to register emby client.')
         else:
             self._registered = True
-            _LOGGER.debug('Registered!, Sessions: %s', 1)
+            _LOGGER.info('Emby client registered!, Id: %s', self.unique_id)
             self._sessions = reg
 
             # Build initial device list.
@@ -267,7 +256,6 @@ class EmbyServer(object):
                               request_json['error']['code'],
                               request_json['error']['message'])
                 return None
-            # return request_json['result']
             return request_json
         except (aiohttp.errors.ClientError, asyncio.TimeoutError,
                 ConnectionRefusedError):
@@ -280,7 +268,7 @@ class EmbyServer(object):
     def socket_connection(self):
         """ Open websocket connection. """
         if not self._registered:
-            _LOGGER.debug('Client not registered, cannot start socket.')
+            _LOGGER.error('Client not registered, cannot start socket.')
             return
 
         url = '{}?DeviceID={}&api_key={}'.format(
@@ -299,7 +287,7 @@ class EmbyServer(object):
                         '{"MessageType":"SessionsStart", "Data": "0,1500"}')
                 except Exception as err:
                     # Catch all for now
-                    _LOGGER.debug('Failure setting session updates: %s', err)
+                    _LOGGER.error('Failure setting session updates: %s', err)
                     raise ValueError('Session updates error.')
 
                 _LOGGER.debug('Socket Connected!')
@@ -331,7 +319,7 @@ class EmbyServer(object):
         jmsg = json.loads(msg)
         msgtype = jmsg['MessageType']
         msgdata = jmsg['Data']
-        # _LOGGER.debug('RAW: %s', msg)
+
         _LOGGER.debug('New websocket message recieved of type: %s', msgtype)
         if msgtype == 'Sessions':
             self._sessions = msgdata
@@ -358,7 +346,7 @@ class EmbyServer(object):
             dev_name = '{}.{}'.format(device['DeviceId'], device['Client'])
 
             try:
-                _LOGGER.debug('Session message on %s of type: %s, themeflag: %s',
+                _LOGGER.debug('Session msg on %s of type: %s, themeflag: %s',
                               dev_name, device['NowPlayingItem']['Type'],
                               device['NowPlayingItem']['IsThemeMedia'])
             except KeyError:
@@ -402,8 +390,6 @@ class EmbyServer(object):
         # Call device callback if new devices were found.
         if new_devices:
             self._do_new_devices_callback(0)
-
-        # _LOGGER.debug('self._devices: %s', self._devices)
 
     def update_check(self, existing, new):
         """ Check device state to see if we need to fire the callback.
@@ -457,8 +443,6 @@ class EmbyServer(object):
     def async_get_latest_items(self, user_id, limit=3, is_played='false',
                                include_item_types='episode'):
         """ Return XX most recent movie or episode additions to library"""
-        # query = 'IncludeItemTypes={0}&Limit={1}&IsPlayed={2}'
-        # query = query.format(include_item_types, limit, is_played)
         if not self._registered:
             _LOGGER.debug('Client not registered, cannot get items.')
             return

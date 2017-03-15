@@ -35,10 +35,6 @@ This library was created primarily for use with Home-Assistant.  The source code
 # Basic Example
 
 ```python
-import pyemby.emby
-
-Emby = pyemby.emby.EmbyRemote('api_key', 'http://192.168.1.5:8096')
-
 from pyemby import EmbyServer
 
 emby = EmbyServer(host, api_key, port=8096, ssl=False, loop=None)

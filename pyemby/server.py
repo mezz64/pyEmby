@@ -80,8 +80,9 @@ class EmbyServer(object):
                         'Version="{}"'.format(
                             self._api_id, __version__)})
 
+        conn = aiohttp.TCPConnector(verify_ssl=False)
         self._api_session = aiohttp.ClientSession(
-            headers=headers, loop=self._event_loop)
+            connector=conn, headers=headers, loop=self._event_loop)
 
         self.wsck = None
 
@@ -231,7 +232,8 @@ class EmbyServer(object):
             return post_result
 
         except (aiohttp.errors.ClientError, asyncio.TimeoutError,
-                ConnectionRefusedError):
+                ConnectionRefusedError) as err:
+            _LOGGER.error('Error posting Emby data: %s', err)
             return None
         finally:
             if post:
@@ -257,7 +259,8 @@ class EmbyServer(object):
                 return None
             return request_json
         except (aiohttp.errors.ClientError, asyncio.TimeoutError,
-                ConnectionRefusedError):
+                ConnectionRefusedError) as err:
+            _LOGGER.error('Error fetching Emby data: %s', err)
             return None
         finally:
             if request:
@@ -271,8 +274,9 @@ class EmbyServer(object):
             return
 
         url = '{}?DeviceID={}&api_key={}'.format(
-            self.construct_url(API_URL), self._api_id, self._api_key)
+            self.construct_url(SOCKET_URL), self._api_id, self._api_key)
 
+        fail_count = 0
         while True:
             _LOGGER.debug('Attempting Socket Connection.')
             try:
@@ -290,6 +294,7 @@ class EmbyServer(object):
                     raise ValueError('Session updates error.')
 
                 _LOGGER.debug('Socket Connected!')
+                fail_count = 0
                 while True:
                     msg = yield from self.wsck.receive()
                     if msg.tp == aiohttp.WSMsgType.text:
@@ -304,10 +309,13 @@ class EmbyServer(object):
                         raise ValueError('Websocket error.')
 
             except (aiohttp.errors.ClientError, asyncio.TimeoutError,
-                    ConnectionRefusedError, OSError, ValueError):
+                    aiohttp.errors.WSServerHandshakeError,
+                    ConnectionRefusedError, OSError, ValueError) as err:
                 if not self._shutdown:
+                    fail_count += 1
                     _LOGGER.debug('Websocket unintentionally closed.'
-                                  ' Trying reconnect in 15s.')
+                                  ' Trying reconnect in %ss. Error: %s',
+                                  (fail_count * 5) + 5, err)
                     yield from asyncio.sleep(15, self._event_loop)
                     continue
                 else:

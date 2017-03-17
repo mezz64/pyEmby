@@ -3,4 +3,6 @@ setup.cfg
 setup.py
 pyemby/__init__.py
 pyemby/constants.py
-pyemby/emby.py
+pyemby/device.py
+pyemby/helpers.py
+pyemby/server.py

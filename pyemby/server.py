@@ -231,13 +231,10 @@ class EmbyServer(object):
             post_result = yield from post.text()
             return post_result
 
-        except (aiohttp.errors.ClientError, asyncio.TimeoutError,
+        except (aiohttp.ClientError, asyncio.TimeoutError,
                 ConnectionRefusedError) as err:
             _LOGGER.error('Error posting Emby data: %s', err)
             return None
-        finally:
-            if post:
-                post.close()
 
     @asyncio.coroutine
     def api_request(self, url, params):
@@ -258,13 +255,10 @@ class EmbyServer(object):
                               request_json['error']['message'])
                 return None
             return request_json
-        except (aiohttp.errors.ClientError, asyncio.TimeoutError,
+        except (aiohttp.ClientError, asyncio.TimeoutError,
                 ConnectionRefusedError) as err:
             _LOGGER.error('Error fetching Emby data: %s', err)
             return None
-        finally:
-            if request:
-                request.close()
 
     @asyncio.coroutine
     def socket_connection(self):
@@ -308,8 +302,8 @@ class EmbyServer(object):
                             'Websocket encountered an error: %s', msg)
                         raise ValueError('Websocket error.')
 
-            except (aiohttp.errors.ClientError, asyncio.TimeoutError,
-                    aiohttp.errors.WSServerHandshakeError,
+            except (aiohttp.ClientError, asyncio.TimeoutError,
+                    aiohttp.WSServerHandshakeError,
                     ConnectionRefusedError, OSError, ValueError) as err:
                 if not self._shutdown:
                     fail_count += 1

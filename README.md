@@ -6,7 +6,7 @@ Code is licensed under the MIT license.
 
 # Version Change
 
-Version 1.0 utilizes python's asyncio module to perform communication with the emby server over websockets and http.  Polling is no longer required to recieve device updates and many callback options are available.
+Version 1.0+ utilizes python's asyncio module to perform communication with the emby server over websockets and http.  Polling is no longer required to recieve device updates and many callback options are available.  Code is compatible with aiohttp 2.0 and above.
 
 Version 0.2 and below utilized the requests library and provided a simplistic interface to the emby api.
 
@@ -17,7 +17,7 @@ Mostly standard libraries are used:
 * json
 * uuid
 * asyncio
-* aiohttp
+* aiohttp >= 2.0
 * async_timeout
 
 # Installation

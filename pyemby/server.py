@@ -401,7 +401,10 @@ class EmbyServer(object):
         """
         old_state = existing.state
         if 'NowPlayingItem' in existing.session_raw:
-            old_theme = existing.session_raw['NowPlayingItem']['IsThemeMedia']
+            try:
+                old_theme = existing.session_raw['NowPlayingItem']['IsThemeMedia']
+            except KeyError:
+                old_theme = False
         else:
             old_theme = False
 
@@ -410,7 +413,12 @@ class EmbyServer(object):
                 new_state = STATE_PAUSED
             else:
                 new_state = STATE_PLAYING
-            new_theme = new['NowPlayingItem']['IsThemeMedia']
+
+            try:
+                new_theme = new['NowPlayingItem']['IsThemeMedia']
+            except KeyError:
+                new_theme = False
+
         else:
             new_state = STATE_IDLE
             new_theme = False

@@ -154,7 +154,7 @@ class EmbyDevice(object):
             return None
 
     @property
-    def media_image_url(self):
+    def media_image_url_deprecated(self):
         """Image url of current playing media."""
         if self.is_nowplaying:
             base = self.server.construct_url(API_URL)
@@ -170,6 +170,27 @@ class EmbyDevice(object):
                     return None
             url = '{0}/Items/{1}/Images/{2}?api_key={3}'.format(
                 base, image_id, image_type, self.server.api_key)
+            return url
+        else:
+            return None
+
+    @property
+    def media_image_url(self):
+        """Image url of current playing media."""
+        if self.is_nowplaying:
+            base = self.server.construct_url(API_URL)
+            try:
+                image_id = self.session['NowPlayingItem']['ImageTags']['Thumb']
+                image_type = 'Thumb'
+            except KeyError:
+                try:
+                    image_id = self.session[
+                        'NowPlayingItem']['ImageTags']['Primary']
+                    image_type = 'Primary'
+                except KeyError:
+                    return None
+            url = '{0}/Items/{1}/Images/{2}?width=500&tag={3}&api_key={4}'.format(
+                base, self.media_id, image_type, image_id, self.server.api_key)
             return url
         else:
             return None

@@ -7,7 +7,7 @@ Licensed under the MIT license.
 """
 
 MAJOR_VERSION = 1
-MINOR_VERSION = 3
+MINOR_VERSION = 4
 __version__ = '{}.{}'.format(MAJOR_VERSION, MINOR_VERSION)
 
 DEFAULT_TIMEOUT = 10

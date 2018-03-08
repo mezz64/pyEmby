@@ -1,3 +1,5 @@
+[![PyPI](https://img.shields.io/pypi/v/pyEmby.svg)](https://pypi.python.org/pypi/pyEmby)
+
 # Introduction
 
 This is a python module aiming to interact with the Emby Media Server (http://emby.media) api.

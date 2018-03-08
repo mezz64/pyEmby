@@ -2,7 +2,7 @@
 pyemby.server
 ~~~~~~~~~~~~~~~~~~~~
 Provides api for Emby server
-Copyright (c) 2017 John Mihalic <https://github.com/mezz64>
+Copyright (c) 2017-2018 John Mihalic <https://github.com/mezz64>
 Licensed under the MIT license.
 
 """
@@ -280,7 +280,7 @@ class EmbyServer(object):
 
                 # Enable sever session updates:
                 try:
-                    self.wsck.send_str(
+                    msg = yield from self.wsck.send_str(
                         '{"MessageType":"SessionsStart", "Data": "0,1500"}')
                 except Exception as err:
                     # Catch all for now
@@ -291,13 +291,13 @@ class EmbyServer(object):
                 fail_count = 0
                 while True:
                     msg = yield from self.wsck.receive()
-                    if msg.tp == aiohttp.WSMsgType.text:
+                    if msg.type == aiohttp.WSMsgType.text:
                         # Process data
                         self.process_msg(msg.data)
 
-                    elif msg.tp == aiohttp.WSMsgType.closed:
+                    elif msg.type == aiohttp.WSMsgType.closed:
                         raise ValueError('Websocket was closed.')
-                    elif msg.tp == aiohttp.WSMsgType.error:
+                    elif msg.type == aiohttp.WSMsgType.error:
                         _LOGGER.debug(
                             'Websocket encountered an error: %s', msg)
                         raise ValueError('Websocket error.')

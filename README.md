@@ -17,7 +17,7 @@ Mostly standard libraries are used:
 * json
 * uuid
 * asyncio
-* aiohttp >= 2.0
+* aiohttp >= 3.0
 * async_timeout
 
 # Installation

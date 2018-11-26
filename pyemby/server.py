@@ -22,12 +22,7 @@ from pyemby.helpers import deprecated_name
 
 _LOGGER = logging.getLogger(__name__)
 
-# pylint: disable=invalid-name,no-member
-try:
-    ensure_future = asyncio.ensure_future
-except AttributeError:
-    # Python 3.4.3 and earlier has this as async
-    ensure_future = asyncio.async
+ensure_future = asyncio.ensure_future
 
 """
 Some general project notes that don't fit anywhere else:

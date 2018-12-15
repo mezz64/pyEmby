@@ -2,7 +2,7 @@
 pyemby.server
 ~~~~~~~~~~~~~~~~~~~~
 Provides api for Emby server
-Copyright (c) 2017-2018 John Mihalic <https://github.com/mezz64>
+Copyright (c) 2017-2019 John Mihalic <https://github.com/mezz64>
 Licensed under the MIT license.
 
 """
@@ -21,13 +21,6 @@ from pyemby.constants import (
 from pyemby.helpers import deprecated_name
 
 _LOGGER = logging.getLogger(__name__)
-
-# pylint: disable=invalid-name,no-member
-try:
-    ensure_future = asyncio.ensure_future
-except AttributeError:
-    # Python 3.4.3 and earlier has this as async
-    ensure_future = asyncio.async
 
 """
 Some general project notes that don't fit anywhere else:
@@ -55,6 +48,9 @@ class EmbyServer(object):
 
         self._sessions = None
         self._devices = {}
+
+        _LOGGER.debug("pyEmby %s initializing new server at: %s",
+                      __version__, host)
 
         if loop is None:
             _LOGGER.info("Creating our own event loop.")
@@ -159,7 +155,7 @@ class EmbyServer(object):
 
     def start(self):
         """Public method for initiating connectivity with the emby server."""
-        ensure_future(self.register(), loop=self._event_loop)
+        asyncio.ensure_future(self.register(), loop=self._event_loop)
 
         if self._own_loop:
             _LOGGER.info("Starting up our own event loop.")
@@ -167,14 +163,13 @@ class EmbyServer(object):
             self._event_loop.close()
             _LOGGER.info("Connection shut down.")
 
-    @asyncio.coroutine
-    def stop(self):
+    async def stop(self):
         """Async method for stopping connectivity with the emby server."""
         self._shutdown = True
 
         if self.wsck:
             _LOGGER.info('Closing Emby server websocket.')
-            yield from self.wsck.close()
+            await self.wsck.close()
             self.wsck = None
 
         if self._own_loop:
@@ -196,13 +191,12 @@ class EmbyServer(object):
         else:
             return None
 
-    @asyncio.coroutine
-    def register(self):
+    async def register(self):
         """Register library device id and get initial device list. """
         url = '{}/Sessions'.format(self.construct_url(API_URL))
         params = {'api_key': self._api_key}
 
-        reg = yield from self.api_request(url, params)
+        reg = await self.api_request(url, params)
         if reg is None:
             self._registered = False
             _LOGGER.error('Unable to register emby client.')
@@ -214,21 +208,20 @@ class EmbyServer(object):
             # Build initial device list.
             self.update_device_list(self._sessions)
 
-            ensure_future(self.socket_connection(), loop=self._event_loop)
+            asyncio.ensure_future(self.socket_connection(), loop=self._event_loop)
 
-    @asyncio.coroutine
-    def api_post(self, url, params):
+    async def api_post(self, url, params):
         """Make api post request."""
         post = None
         try:
             with async_timeout.timeout(DEFAULT_TIMEOUT, loop=self._event_loop):
-                post = yield from self._api_session.post(
+                post = await self._api_session.post(
                     url, params=params)
             if post.status != 204:
                 _LOGGER.error('Error posting Emby data: %s', post.status)
                 return None
 
-            post_result = yield from post.text()
+            post_result = await post.text()
             return post_result
 
         except (aiohttp.ClientError, asyncio.TimeoutError,
@@ -236,19 +229,18 @@ class EmbyServer(object):
             _LOGGER.error('Error posting Emby data: %s', err)
             return None
 
-    @asyncio.coroutine
-    def api_request(self, url, params):
+    async def api_request(self, url, params):
         """Make api fetch request."""
         request = None
         try:
             with async_timeout.timeout(DEFAULT_TIMEOUT, loop=self._event_loop):
-                request = yield from self._api_session.get(
+                request = await self._api_session.get(
                     url, params=params)
             if request.status != 200:
                 _LOGGER.error('Error fetching Emby data: %s', request.status)
                 return None
 
-            request_json = yield from request.json()
+            request_json = await request.json()
             if 'error' in request_json:
                 _LOGGER.error('Error converting Emby data to json: %s: %s',
                               request_json['error']['code'],
@@ -260,8 +252,7 @@ class EmbyServer(object):
             _LOGGER.error('Error fetching Emby data: %s', err)
             return None
 
-    @asyncio.coroutine
-    def socket_connection(self):
+    async def socket_connection(self):
         """ Open websocket connection. """
         if not self._registered:
             _LOGGER.error('Client not registered, cannot start socket.')
@@ -276,11 +267,11 @@ class EmbyServer(object):
             try:
                 with async_timeout.timeout(DEFAULT_TIMEOUT,
                                            loop=self._event_loop):
-                    self.wsck = yield from self._api_session.ws_connect(url)
+                    self.wsck = await self._api_session.ws_connect(url)
 
                 # Enable sever session updates:
                 try:
-                    msg = yield from self.wsck.send_str(
+                    msg = await self.wsck.send_str(
                         '{"MessageType":"SessionsStart", "Data": "0,1500"}')
                 except Exception as err:
                     # Catch all for now
@@ -290,7 +281,7 @@ class EmbyServer(object):
                 _LOGGER.debug('Socket Connected!')
                 fail_count = 0
                 while True:
-                    msg = yield from self.wsck.receive()
+                    msg = await self.wsck.receive()
                     if msg.type == aiohttp.WSMsgType.text:
                         # Process data
                         self.process_msg(msg.data)
@@ -310,7 +301,7 @@ class EmbyServer(object):
                     _LOGGER.debug('Websocket unintentionally closed.'
                                   ' Trying reconnect in %ss. Error: %s',
                                   (fail_count * 5) + 5, err)
-                    yield from asyncio.sleep(15, self._event_loop)
+                    await asyncio.sleep(15, self._event_loop)
                     continue
                 else:
                     break
@@ -443,13 +434,12 @@ class EmbyServer(object):
             """ Return result. """
             return future.result()
 
-        run_coro = ensure_future(self.async_get_latest_items(
+        run_coro = asyncio.ensure_future(self.async_get_latest_items(
             user_id, limit, is_played, include_item_types),
                                  loop=self._event_loop)
         run_coro.add_done_callback(return_result)
 
-    @asyncio.coroutine
-    def async_get_latest_items(self, user_id, limit=3, is_played='false',
+    async def async_get_latest_items(self, user_id, limit=3, is_played='false',
                                include_item_types='episode'):
         """ Return XX most recent movie or episode additions to library"""
         if not self._registered:
@@ -463,7 +453,7 @@ class EmbyServer(object):
                   'Limit': limit,
                   'IsPlayed': is_played}
 
-        items = yield from self.api_request(url, params)
+        items = await self.api_request(url, params)
         if items is None:
             _LOGGER.debug('Unable to fetch items.')
         else:

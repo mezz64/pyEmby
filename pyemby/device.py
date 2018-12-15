@@ -2,7 +2,7 @@
 pyemby.device
 ~~~~~~~~~~~~~~~~~~~~
 Device access class.
-Copyright (c) 2017-2018 John Mihalic <https://github.com/mezz64>
+Copyright (c) 2017-2019 John Mihalic <https://github.com/mezz64>
 Licensed under the MIT license.
 
 """
@@ -247,8 +247,7 @@ class EmbyDevice(object):
         """ Return remote control status. """
         return self.session['SupportsRemoteControl']
 
-    @asyncio.coroutine
-    def set_playstate(self, state, pos=0):
+    async def set_playstate(self, state, pos=0):
         """ Send media commands to server. """
         url = '{}/Sessions/{}/Playing/{}'.format(
             self.server.construct_url(API_URL), self.session_id, state)
@@ -260,7 +259,7 @@ class EmbyDevice(object):
 
         _LOGGER.debug('Playstate URL: %s', url)
 
-        post = yield from self.server.api_post(url, params)
+        post = await self.server.api_post(url, params)
         if post is None:
             _LOGGER.debug('Error sending command.')
         else:

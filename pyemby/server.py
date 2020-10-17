@@ -18,7 +18,7 @@ from pyemby.device import EmbyDevice
 from pyemby.constants import (
     __version__, DEFAULT_TIMEOUT, DEFAULT_HEADERS, API_URL, SOCKET_URL,
     STATE_PAUSED, STATE_PLAYING, STATE_IDLE)
-from pyemby.helpers import deprecated_name
+from pyemby.helpers import deprecated_name, clean_none_dict_values
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -203,7 +203,7 @@ class EmbyServer(object):
         else:
             self._registered = True
             _LOGGER.info('Emby client registered!, Id: %s', self.unique_id)
-            self._sessions = reg
+            self._sessions = clean_none_dict_values(reg)
 
             # Build initial device list.
             self.update_device_list(self._sessions)
@@ -314,7 +314,7 @@ class EmbyServer(object):
 
         _LOGGER.debug('New websocket message recieved of type: %s', msgtype)
         if msgtype == 'Sessions':
-            self._sessions = msgdata
+            self._sessions = clean_none_dict_values(msgdata)
             # Check for new devices and update as needed.
             self.update_device_list(self._sessions)
         """

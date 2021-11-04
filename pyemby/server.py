@@ -214,7 +214,7 @@ class EmbyServer(object):
         """Make api post request."""
         post = None
         try:
-            with async_timeout.timeout(DEFAULT_TIMEOUT, loop=self._event_loop):
+            with async_timeout.timeout(DEFAULT_TIMEOUT):
                 post = await self._api_session.post(
                     url, params=params)
             if post.status != 204:
@@ -233,7 +233,7 @@ class EmbyServer(object):
         """Make api fetch request."""
         request = None
         try:
-            with async_timeout.timeout(DEFAULT_TIMEOUT, loop=self._event_loop):
+            with async_timeout.timeout(DEFAULT_TIMEOUT):
                 request = await self._api_session.get(
                     url, params=params)
             if request.status != 200:
@@ -265,8 +265,7 @@ class EmbyServer(object):
         while True:
             _LOGGER.debug('Attempting Socket Connection.')
             try:
-                with async_timeout.timeout(DEFAULT_TIMEOUT,
-                                           loop=self._event_loop):
+                with async_timeout.timeout(DEFAULT_TIMEOUT):
                     self.wsck = await self._api_session.ws_connect(url)
 
                 # Enable sever session updates:

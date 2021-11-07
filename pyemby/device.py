@@ -2,7 +2,7 @@
 pyemby.device
 ~~~~~~~~~~~~~~~~~~~~
 Device access class.
-Copyright (c) 2017-2019 John Mihalic <https://github.com/mezz64>
+Copyright (c) 2017-2021 John Mihalic <https://github.com/mezz64>
 Licensed under the MIT license.
 
 """

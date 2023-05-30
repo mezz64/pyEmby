@@ -294,7 +294,7 @@ class EmbyServer(object):
 
             except (aiohttp.ClientError, asyncio.TimeoutError,
                     aiohttp.WSServerHandshakeError,
-                    ConnectionRefusedError, OSError, ValueError) as err:
+                    ConnectionRefusedError, OSError, KeyError, ValueError) as err:
                 if not self._shutdown:
                     fail_count += 1
                     _LOGGER.debug('Websocket unintentionally closed.'

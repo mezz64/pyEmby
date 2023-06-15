@@ -294,7 +294,7 @@ class EmbyServer(object):
 
             except (aiohttp.ClientError, asyncio.TimeoutError,
                     aiohttp.WSServerHandshakeError,
-                    ConnectionRefusedError, OSError, ValueError) as err:
+                    ConnectionRefusedError, OSError, KeyError, ValueError) as err:
                 if not self._shutdown:
                     fail_count += 1
                     _LOGGER.debug('Websocket unintentionally closed.'
@@ -308,8 +308,8 @@ class EmbyServer(object):
     def process_msg(self, msg):
         """Process messages from the event stream."""
         jmsg = json.loads(msg)
-        msgtype = jmsg['MessageType']
-        msgdata = jmsg['Data']
+        msgtype = jmsg.get('MessageType', 'unknown')
+        msgdata = jmsg.get('Data', None)
 
         _LOGGER.debug('New websocket message recieved of type: %s', msgtype)
         if msgtype == 'Sessions':
@@ -319,6 +319,7 @@ class EmbyServer(object):
         """
         May process other message types in the future.
         Other known types are:
+        - Ping (no data)
         - PlaybackStarted
         - PlaybackStopped
         - SessionEnded

@@ -2,12 +2,12 @@
 pyemby.constants
 ~~~~~~~~~~~~~~~~~~~~
 Constants list
-Copyright (c) 2017-2021 John Mihalic <https://github.com/mezz64>
+Copyright (c) 2017-2023 John Mihalic <https://github.com/mezz64>
 Licensed under the MIT license.
 """
 
 MAJOR_VERSION = 1
-MINOR_VERSION = 8
+MINOR_VERSION = 9
 __version__ = '{}.{}'.format(MAJOR_VERSION, MINOR_VERSION)
 
 DEFAULT_TIMEOUT = 10

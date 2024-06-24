@@ -23,5 +23,7 @@ setup(
     url='https://github.com/mezz64/pyemby',
     download_url = 'https://github.com/mezz64/pyemby/tarball/1.9',
     keywords= ['emby', 'media sever', 'api wrapper'],
-    classifiers = [],
-    )
+    classifiers = [
+        'License :: OSI Approved :: MIT License'
+    ],
+)

@@ -266,7 +266,7 @@ class EmbyServer(object):
             _LOGGER.debug('Attempting Socket Connection.')
             try:
                 with async_timeout.timeout(DEFAULT_TIMEOUT):
-                    self.wsck = await self._api_session.ws_connect(url)
+                    self.wsck = await self._api_session.ws_connect(url, heartbeat=300)
 
                 # Enable sever session updates:
                 try:

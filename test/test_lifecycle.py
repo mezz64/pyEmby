@@ -76,13 +76,16 @@ class TestInjectedLoop(unittest.IsolatedAsyncioTestCase):
         await self.server.stop()
         self.assertIsNone(self.server.wsck)
 
-    async def test_failed_registration_does_not_open_socket(self):
+    async def test_failed_registration_keeps_retrying_without_socket(self):
         self.session.result = FakeResponse(401)
         self.server.start()
-        await self.server._register_task
+        await asyncio.sleep(0.05)
+        task = self.server._register_task
+        self.assertFalse(task.done())  # waiting to retry, not given up
         self.assertFalse(self.server._registered)
         self.assertIsNone(self.server._socket_task)
-        await self.server.stop()
+        await asyncio.wait_for(self.server.stop(), 1)
+        self.assertTrue(task.cancelled())
 
     async def test_stop_cancels_reconnect_backoff_promptly(self):
         """stop() must not wait out a pending reconnect delay."""

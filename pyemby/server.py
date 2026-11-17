@@ -173,7 +173,8 @@ class EmbyServer(object):
     def start(self):
         """Public method for initiating connectivity with the emby server."""
         self._shutdown = False
-        self._register_task = self._event_loop.create_task(self.register())
+        self._register_task = self._event_loop.create_task(
+            self._register_loop())
 
         if self._own_loop:
             _LOGGER.info("Starting up our own event loop.")
@@ -224,15 +225,44 @@ class EmbyServer(object):
         else:
             return None
 
-    async def register(self):
-        """Register library device id and get initial device list. """
+    async def _register_loop(self):
+        """Register with the server, retrying until it succeeds.
+
+        The server may be unreachable when we start (powered off, still
+        booting, network down). Keep retrying with backoff instead of
+        giving up, so a later-started server is picked up automatically.
+        """
+        fail_count = 0
+        while not self._shutdown:
+            if await self.register(log_errors=fail_count == 0):
+                if fail_count:
+                    _LOGGER.info('Emby server reachable again after %s '
+                                 'failed attempt(s).', fail_count)
+                return
+            fail_count += 1
+            delay = self._reconnect_delay(fail_count)
+            if fail_count == 1:
+                _LOGGER.warning('Unable to register with Emby server at %s, '
+                                'will keep retrying (next in %ss).',
+                                self.construct_url(API_URL), delay)
+            else:
+                _LOGGER.debug('Emby registration attempt %s failed, '
+                              'retrying in %ss.', fail_count, delay)
+            await asyncio.sleep(delay)
+
+    async def register(self, log_errors=True):
+        """Register library device id and get initial device list.
+
+        Returns True on success, False if the server could not be reached.
+        """
         url = '{}/Sessions'.format(self.construct_url(API_URL))
         params = {'api_key': self._api_key}
 
-        reg = await self.api_request(url, params)
+        reg = await self.api_request(url, params, log_errors=log_errors)
         if reg is None:
             self._registered = False
-            _LOGGER.error('Unable to register emby client.')
+            _LOGGER.debug('Unable to register emby client.')
+            return False
         else:
             self._registered = True
             _LOGGER.info('Emby client registered!, Id: %s', self.unique_id)
@@ -243,6 +273,7 @@ class EmbyServer(object):
 
             self._socket_task = self._event_loop.create_task(
                 self.socket_connection())
+            return True
 
     async def api_post(self, url, params):
         """Make api post request."""
@@ -264,8 +295,13 @@ class EmbyServer(object):
             _LOGGER.error('Error posting Emby data: %s', err)
             return None
 
-    async def api_request(self, url, params):
-        """Make api fetch request."""
+    async def api_request(self, url, params, log_errors=True):
+        """Make api fetch request.
+
+        Failures are logged at error level, or at debug level when
+        log_errors is False (used for repeated registration retries).
+        """
+        log = _LOGGER.error if log_errors else _LOGGER.debug
         request = None
         try:
             request = await asyncio.wait_for(
@@ -273,19 +309,19 @@ class EmbyServer(object):
                     url, params=params, headers=self._headers, ssl=False),
                 DEFAULT_TIMEOUT)
             if request.status != 200:
-                _LOGGER.error('Error fetching Emby data: %s', request.status)
+                log('Error fetching Emby data: %s', request.status)
                 return None
 
             request_json = await request.json()
             if 'error' in request_json:
-                _LOGGER.error('Error converting Emby data to json: %s: %s',
+                log('Error converting Emby data to json: %s: %s',
                               request_json['error']['code'],
                               request_json['error']['message'])
                 return None
             return request_json
         except (aiohttp.ClientError, asyncio.TimeoutError,
                 ConnectionRefusedError) as err:
-            _LOGGER.error('Error fetching Emby data: %s', err)
+            log('Error fetching Emby data: %s', err)
             return None
 
     async def socket_connection(self):
@@ -320,8 +356,14 @@ class EmbyServer(object):
                 while True:
                     msg = await self.wsck.receive()
                     if msg.type == aiohttp.WSMsgType.text:
-                        # Process data
-                        self.process_msg(msg.data)
+                        # A single bad message must never take down the
+                        # connection; log it and keep listening.
+                        try:
+                            self.process_msg(msg.data)
+                        except Exception:  # pylint: disable=broad-except
+                            _LOGGER.exception(
+                                'Error processing Emby message: %.500s',
+                                msg.data)
 
                     elif msg.type == aiohttp.WSMsgType.closed:
                         raise ValueError('Websocket was closed.')
@@ -330,9 +372,10 @@ class EmbyServer(object):
                             'Websocket encountered an error: %s', msg)
                         raise ValueError('Websocket error.')
 
-            except (aiohttp.ClientError, asyncio.TimeoutError,
-                    aiohttp.WSServerHandshakeError,
-                    ConnectionRefusedError, OSError, KeyError, ValueError) as err:
+            except Exception as err:  # pylint: disable=broad-except
+                # Any failure reconnects; an unexpected exception type must
+                # not end this task and leave devices frozen. Cancellation
+                # (stop()) is a BaseException and is not caught here.
                 if not self._shutdown:
                     fail_count += 1
                     delay = self._reconnect_delay(fail_count)
@@ -371,15 +414,21 @@ class EmbyServer(object):
 
     def update_device_list(self, sessions):
         """ Update device list. """
-        if sessions is None:
-            _LOGGER.error('Error updating Emby devices.')
+        if not isinstance(sessions, list):
+            _LOGGER.error('Error updating Emby devices, unexpected session '
+                          'data: %.200r', sessions)
             return
 
         new_devices = []
         active_devices = []
         dev_update = False
         for device in sessions:
-            dev_name = '{}.{}'.format(device['DeviceId'], device['Client'])
+            try:
+                dev_name = '{}.{}'.format(device['DeviceId'], device['Client'])
+            except (KeyError, TypeError):
+                _LOGGER.debug('Skipping session without DeviceId/Client: '
+                              '%.200r', device)
+                continue
 
             try:
                 _LOGGER.debug('Session msg on %s of type: %s, themeflag: %s',
@@ -444,7 +493,7 @@ class EmbyServer(object):
             old_theme = False
 
         if 'NowPlayingItem' in new:
-            if new['PlayState']['IsPaused']:
+            if new.get('PlayState', {}).get('IsPaused'):
                 new_state = STATE_PAUSED
             else:
                 new_state = STATE_PLAYING

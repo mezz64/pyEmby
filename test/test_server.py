@@ -24,6 +24,9 @@ def make_server():
     server._event_loop = asyncio.new_event_loop()
     server._api_id = OWN_API_ID
     server._api_key = 'secret'
+    server._host = 'emby.local'
+    server._port = 8096
+    server._ssl = False
     server._sessions = None
     server._devices = {}
     server._new_devices_callbacks = []

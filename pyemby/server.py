@@ -12,7 +12,6 @@ import json
 import uuid
 import asyncio
 import aiohttp
-import async_timeout
 
 from pyemby.device import EmbyDevice
 from pyemby.constants import (
@@ -214,9 +213,8 @@ class EmbyServer(object):
         """Make api post request."""
         post = None
         try:
-            with async_timeout.timeout(DEFAULT_TIMEOUT):
-                post = await self._api_session.post(
-                    url, params=params)
+            post = await asyncio.wait_for(
+                self._api_session.post(url, params=params), DEFAULT_TIMEOUT)
             if post.status != 204:
                 _LOGGER.error('Error posting Emby data: %s', post.status)
                 return None
@@ -233,9 +231,8 @@ class EmbyServer(object):
         """Make api fetch request."""
         request = None
         try:
-            with async_timeout.timeout(DEFAULT_TIMEOUT):
-                request = await self._api_session.get(
-                    url, params=params)
+            request = await asyncio.wait_for(
+                self._api_session.get(url, params=params), DEFAULT_TIMEOUT)
             if request.status != 200:
                 _LOGGER.error('Error fetching Emby data: %s', request.status)
                 return None
@@ -265,8 +262,9 @@ class EmbyServer(object):
         while True:
             _LOGGER.debug('Attempting Socket Connection.')
             try:
-                with async_timeout.timeout(DEFAULT_TIMEOUT):
-                    self.wsck = await self._api_session.ws_connect(url, heartbeat=300)
+                self.wsck = await asyncio.wait_for(
+                    self._api_session.ws_connect(url, heartbeat=300),
+                    DEFAULT_TIMEOUT)
 
                 # Enable sever session updates:
                 try:

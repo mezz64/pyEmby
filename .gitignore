@@ -62,3 +62,8 @@ docs/_build/
 # PyBuilder
 target/
 
+
+# Virtual environments / tooling
+.venv/
+venv/
+.pytest_cache/

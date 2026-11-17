@@ -126,7 +126,25 @@ class TestDeviceMedia(unittest.TestCase):
         dev = make_device(AUDIO_SESSION)
         self.assertEqual(dev.media_album_name, 'Album')
         self.assertEqual(dev.media_album_artist, 'Band')
-        self.assertEqual(dev.media_artist, 'Singer')
+        self.assertEqual(dev.media_artist, 'Singer, Guest')
+
+    def test_artist_variants(self):
+        cases = [
+            (['Solo'], 'Solo'),
+            (['Singer', 'Guest'], 'Singer, Guest'),
+            ([], None),
+            ('Already a string', 'Already a string'),
+        ]
+        for artists, expected in cases:
+            with self.subTest(artists=artists):
+                session = copy.deepcopy(AUDIO_SESSION)
+                session['NowPlayingItem']['Artists'] = artists
+                self.assertEqual(make_device(session).media_artist, expected)
+
+    def test_artist_missing(self):
+        session = copy.deepcopy(AUDIO_SESSION)
+        del session['NowPlayingItem']['Artists']
+        self.assertIsNone(make_device(session).media_artist)
 
     def test_image_url_prefers_thumb(self):
         dev = make_device(AUDIO_SESSION)

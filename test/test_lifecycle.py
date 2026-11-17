@@ -52,6 +52,11 @@ class TestReconnectDelay(unittest.TestCase):
 class TestInjectedLoop(unittest.IsolatedAsyncioTestCase):
     """Home Assistant style: the caller owns and runs the loop."""
 
+    @staticmethod
+    async def _until(predicate):
+        while not predicate():
+            await asyncio.sleep(0.001)
+
     async def asyncSetUp(self):
         self.session = FakeSession(result=FakeResponse(200, []))
         self.server = EmbyServer('emby.local', 'secret',
@@ -70,7 +75,9 @@ class TestInjectedLoop(unittest.IsolatedAsyncioTestCase):
         await self.server._register_task
         self.assertTrue(self.server._registered)
         self.assertIsNotNone(self.server._socket_task)
-        await asyncio.sleep(0)
+        # How many loop iterations the connect takes varies by Python
+        # version (wait_for adds a task before 3.12), so poll for it.
+        await asyncio.wait_for(self._until(lambda: websocket.sent), 1)
         self.assertEqual(len(websocket.sent), 1)
         self.assertIn('SessionsStart', websocket.sent[0])
         await self.server.stop()

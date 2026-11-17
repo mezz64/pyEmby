@@ -114,6 +114,39 @@ python -m venv .venv
 
 The tests run offline against sample session data. They run on every pull request across all supported Python versions.
 
+## Testing against a real server
+
+Put your server details in a `.env` file at the repo root. The file is gitignored, so it won't be committed:
+
+```
+EMBY_HOST=192.168.1.10
+EMBY_API_KEY=your-api-key
+# EMBY_PORT=8096
+# EMBY_SSL=1
+```
+
+Load it into your shell with `set -a; source .env; set +a`, then:
+
+```
+# Watch devices and print every event live (Ctrl-C to quit)
+.venv/bin/python scripts/emby_live.py monitor
+
+# List current sessions and their state
+.venv/bin/python scripts/emby_live.py info
+
+# Send a command. The device can be any unique part of its name or key.
+.venv/bin/python scripts/emby_live.py control "living room" pause
+.venv/bin/python scripts/emby_live.py control "living room" seek 600
+
+# Save raw session JSON, e.g. to build test cases from real data
+.venv/bin/python scripts/emby_live.py capture captures/sessions.json
+
+# Read-only checks against the server (skipped when EMBY_HOST is unset)
+.venv/bin/python -m unittest test.test_live -v
+```
+
+Add `-v` to the script for pyEmby debug logging. Captured session files contain user names, device IDs and IP addresses. The `captures/` folder is gitignored; review any capture before sharing it.
+
 ## Releasing
 
 Releases go to PyPI automatically through [trusted publishing](https://docs.pypi.org/trusted-publishers/):

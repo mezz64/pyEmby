@@ -67,3 +67,7 @@ target/
 .venv/
 venv/
 .pytest_cache/
+
+# Local live-testing credentials and captured server data
+.env
+captures/

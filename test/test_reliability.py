@@ -196,6 +196,78 @@ class TestMessageErrorIsolation(ReliabilityTestCase):
         self.assertFalse(server._socket_task.done())
 
 
+class TestEventDrivenServer(ReliabilityTestCase):
+    """Model of Emby 4.x websocket behavior, observed on Emby 4.11.0.13.
+
+    After SessionsStart the server sends nothing at all (no initial
+    session list, no periodic updates, no keep-alive) until a session
+    changes. A change then produces a burst of identical "Sessions"
+    messages. pyEmby must therefore rely on the /Sessions list loaded at
+    registration, and treat websocket silence as "nothing changed".
+    """
+
+    async def start_silent(self, initial_sessions):
+        websocket = ScriptedWebSocket()  # sends nothing until fed
+        session = ScriptedSession(
+            get_results=[FakeResponse(200, copy.deepcopy(initial_sessions))],
+            websockets=[websocket])
+        server = self.make_server(session)
+        self.new_calls, self.stale_calls, self.update_calls = [], [], []
+        server.add_new_devices_callback(self.new_calls.append)
+        server.add_stale_devices_callback(self.stale_calls.append)
+        server.add_update_callback(self.update_calls.append, DEV_NAME)
+        server.start()
+        await self.wait_for(lambda: session.ws_calls == 1)
+        return server, session, websocket
+
+    async def test_initial_devices_come_from_registration(self):
+        server, _, _ = await self.start_silent([IDLE_SESSION])
+        self.assertIn(DEV_NAME, server.devices)
+        self.assertTrue(server.devices[DEV_NAME].is_active)
+        await self.wait_for(lambda: self.new_calls)
+
+    async def test_silence_changes_nothing(self):
+        server, session, _ = await self.start_silent([IDLE_SESSION])
+        await asyncio.sleep(0.2)
+        self.assertTrue(server.devices[DEV_NAME].is_active)
+        self.assertEqual(self.stale_calls, [])
+        self.assertEqual(self.update_calls, [])
+        self.assertEqual(session.ws_calls, 1)  # silence is not a failure
+        self.assertFalse(server._socket_task.done())
+
+    async def test_change_event_updates_device(self):
+        server, _, websocket = await self.start_silent([IDLE_SESSION])
+        playing = dict(copy.deepcopy(IDLE_SESSION), NowPlayingItem={
+            'Id': 'i1', 'Name': 'Pilot', 'Type': 'Episode'})
+        websocket.feed(sessions_msg(playing))
+        await self.wait_for(lambda: self.update_calls)
+        self.assertEqual(server.devices[DEV_NAME].state, STATE_PLAYING)
+        self.assertEqual(server.devices[DEV_NAME].media_title, 'Pilot')
+
+    async def test_burst_of_identical_pushes_updates_once(self):
+        """A change arrives as several identical messages; only the
+        transition should fire the update callback."""
+        server, _, websocket = await self.start_silent([IDLE_SESSION])
+        paused = dict(copy.deepcopy(IDLE_SESSION),
+                      PlayState={'IsPaused': True},
+                      NowPlayingItem={'Id': 'i1', 'Name': 'Pilot'})
+        for _ in range(3):
+            websocket.feed(sessions_msg(paused))
+        await self.wait_for(lambda: websocket.queue.empty())
+        await asyncio.sleep(0.05)
+        self.assertEqual(self.update_calls, [DEV_NAME])
+
+    async def test_own_session_in_push_is_ignored(self):
+        """Pushes include pyEmby's own session; it must not become a
+        device."""
+        server, _, websocket = await self.start_silent([])
+        own = dict(copy.deepcopy(IDLE_SESSION),
+                   DeviceId=str(server.unique_id), Client='pyEmby')
+        websocket.feed(sessions_msg(own, IDLE_SESSION))
+        await self.wait_for(lambda: DEV_NAME in server.devices)
+        self.assertEqual(list(server.devices), [DEV_NAME])
+
+
 class TestTolerantParsing(unittest.TestCase):
 
     def test_now_playing_without_playstate(self):

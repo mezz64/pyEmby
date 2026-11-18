@@ -30,6 +30,12 @@ def make_server():
     server._headers = {}
     server._api_session = None
     server._own_session = True
+    server._own_loop = False
+    server._shutdown = False
+    server._registered = False
+    server._register_task = None
+    server._socket_task = None
+    server.wsck = None
     server._sessions = None
     server._devices = {}
     server._new_devices_callbacks = []

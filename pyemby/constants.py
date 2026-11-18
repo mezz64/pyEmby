@@ -10,6 +10,9 @@ __version__ = '1.10'
 
 DEFAULT_TIMEOUT = 10
 
+# Websocket reconnect backoff: 10s, 15s, 20s, ... capped at this value.
+RECONNECT_MAX_DELAY = 60
+
 DEFAULT_HEADERS = {
     'Content-Type': "application/json",
     'Accept': "application/json",

@@ -12,11 +12,11 @@ import json
 import uuid
 import asyncio
 import aiohttp
-import async_timeout
 
 from pyemby.device import EmbyDevice
 from pyemby.constants import (
     __version__, DEFAULT_TIMEOUT, DEFAULT_HEADERS, API_URL, SOCKET_URL,
+    RECONNECT_MAX_DELAY,
     STATE_PAUSED, STATE_PLAYING, STATE_IDLE)
 from pyemby.helpers import deprecated_name, clean_none_dict_values
 
@@ -39,8 +39,14 @@ everything else can be done with normal methods
 
 class EmbyServer(object):
     """Emby test."""
-    def __init__(self, host, api_key, port=8096, ssl=False, loop=None):
-        """Initialize base class."""
+    def __init__(self, host, api_key, port=8096, ssl=False, loop=None,
+                 session=None):
+        """Initialize base class.
+
+        session: optional aiohttp.ClientSession to use for all requests.
+        If omitted, pyEmby creates its own session on first use and closes
+        it in stop(). A session passed in is never closed by pyEmby.
+        """
         self._host = host
         self._api_key = api_key
         self._port = port
@@ -61,24 +67,23 @@ class EmbyServer(object):
             self._event_loop = loop
             self._own_loop = False
 
-        asyncio.set_event_loop(self._event_loop)
-
         # Enable for asyncio debug logging
         # self._event_loop.set_debug(True)
 
         self._api_id = uuid.getnode()
 
-        headers = DEFAULT_HEADERS.copy()
-        headers.update({'x-emby-authorization':
-                        'MediaBrowser Client="pyEmby",'
-                        'Device="HomeAssistant",'
-                        'DeviceId="{}",'
-                        'Version="{}"'.format(
-                            self._api_id, __version__)})
+        self._headers = DEFAULT_HEADERS.copy()
+        self._headers.update({'x-emby-authorization':
+                              'MediaBrowser Client="pyEmby",'
+                              'Device="HomeAssistant",'
+                              'DeviceId="{}",'
+                              'Version="{}"'.format(
+                                  self._api_id, __version__)})
 
-        conn = aiohttp.TCPConnector(verify_ssl=False)
-        self._api_session = aiohttp.ClientSession(
-            connector=conn, headers=headers, loop=self._event_loop)
+        # The session is created lazily (see _get_session) so that the
+        # server object can be constructed outside a running event loop.
+        self._api_session = session
+        self._own_session = session is None
 
         self.wsck = None
 
@@ -89,6 +94,18 @@ class EmbyServer(object):
 
         self._shutdown = False
         self._registered = False
+
+        # Keep references to background tasks so they are not garbage
+        # collected while running, and so stop() can cancel them.
+        self._register_task = None
+        self._socket_task = None
+
+    def _get_session(self):
+        """Return the aiohttp session, creating our own if needed."""
+        if self._own_session and (self._api_session is None
+                                  or self._api_session.closed):
+            self._api_session = aiohttp.ClientSession()
+        return self._api_session
 
     @property
     def unique_id(self):
@@ -155,7 +172,8 @@ class EmbyServer(object):
 
     def start(self):
         """Public method for initiating connectivity with the emby server."""
-        asyncio.ensure_future(self.register(), loop=self._event_loop)
+        self._shutdown = False
+        self._register_task = self._event_loop.create_task(self.register())
 
         if self._own_loop:
             _LOGGER.info("Starting up our own event loop.")
@@ -167,10 +185,25 @@ class EmbyServer(object):
         """Async method for stopping connectivity with the emby server."""
         self._shutdown = True
 
+        current = asyncio.current_task()
+        tasks = [task for task in (self._register_task, self._socket_task)
+                 if task is not None and task is not current
+                 and not task.done()]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._register_task = None
+        self._socket_task = None
+
         if self.wsck:
             _LOGGER.info('Closing Emby server websocket.')
             await self.wsck.close()
             self.wsck = None
+
+        if self._own_session and self._api_session is not None:
+            await self._api_session.close()
+            self._api_session = None
 
         if self._own_loop:
             _LOGGER.info("Shutting down Emby server loop...")
@@ -208,15 +241,17 @@ class EmbyServer(object):
             # Build initial device list.
             self.update_device_list(self._sessions)
 
-            asyncio.ensure_future(self.socket_connection(), loop=self._event_loop)
+            self._socket_task = self._event_loop.create_task(
+                self.socket_connection())
 
     async def api_post(self, url, params):
         """Make api post request."""
         post = None
         try:
-            with async_timeout.timeout(DEFAULT_TIMEOUT):
-                post = await self._api_session.post(
-                    url, params=params)
+            post = await asyncio.wait_for(
+                self._get_session().post(
+                    url, params=params, headers=self._headers, ssl=False),
+                DEFAULT_TIMEOUT)
             if post.status != 204:
                 _LOGGER.error('Error posting Emby data: %s', post.status)
                 return None
@@ -233,9 +268,10 @@ class EmbyServer(object):
         """Make api fetch request."""
         request = None
         try:
-            with async_timeout.timeout(DEFAULT_TIMEOUT):
-                request = await self._api_session.get(
-                    url, params=params)
+            request = await asyncio.wait_for(
+                self._get_session().get(
+                    url, params=params, headers=self._headers, ssl=False),
+                DEFAULT_TIMEOUT)
             if request.status != 200:
                 _LOGGER.error('Error fetching Emby data: %s', request.status)
                 return None
@@ -265,8 +301,10 @@ class EmbyServer(object):
         while True:
             _LOGGER.debug('Attempting Socket Connection.')
             try:
-                with async_timeout.timeout(DEFAULT_TIMEOUT):
-                    self.wsck = await self._api_session.ws_connect(url, heartbeat=300)
+                self.wsck = await asyncio.wait_for(
+                    self._get_session().ws_connect(
+                        url, heartbeat=300, headers=self._headers, ssl=False),
+                    DEFAULT_TIMEOUT)
 
                 # Enable sever session updates:
                 try:
@@ -297,13 +335,19 @@ class EmbyServer(object):
                     ConnectionRefusedError, OSError, KeyError, ValueError) as err:
                 if not self._shutdown:
                     fail_count += 1
+                    delay = self._reconnect_delay(fail_count)
                     _LOGGER.debug('Websocket unintentionally closed.'
                                   ' Trying reconnect in %ss. Error: %s',
-                                  (fail_count * 5) + 5, err)
-                    await asyncio.sleep(15, self._event_loop)
+                                  delay, err)
+                    await asyncio.sleep(delay)
                     continue
                 else:
                     break
+
+    @staticmethod
+    def _reconnect_delay(fail_count):
+        """Seconds to wait before reconnect attempt number fail_count."""
+        return min(5 + 5 * fail_count, RECONNECT_MAX_DELAY)
 
     def process_msg(self, msg):
         """Process messages from the event stream."""
@@ -430,14 +474,8 @@ class EmbyServer(object):
             _LOGGER.debug('Client not registered, cannot get items.')
             return
 
-        def return_result(future):
-            """ Return result. """
-            return future.result()
-
-        run_coro = asyncio.ensure_future(self.async_get_latest_items(
-            user_id, limit, is_played, include_item_types),
-                                 loop=self._event_loop)
-        run_coro.add_done_callback(return_result)
+        return self._event_loop.create_task(self.async_get_latest_items(
+            user_id, limit, is_played, include_item_types))
 
     async def async_get_latest_items(self, user_id, limit=3, is_played='false',
                                include_item_types='episode'):

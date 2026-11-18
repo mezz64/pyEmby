@@ -16,7 +16,6 @@ Code is licensed under the MIT license.
 
 * Python 3.10+
 * [aiohttp](https://pypi.org/project/aiohttp/) >= 3.0
-* [async_timeout](https://pypi.org/project/async-timeout/)
 * An Emby server and an API key (Emby dashboard → *Advanced* → *API Keys*)
 
 # Installation

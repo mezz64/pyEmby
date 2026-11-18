@@ -38,8 +38,14 @@ everything else can be done with normal methods
 
 class EmbyServer(object):
     """Emby test."""
-    def __init__(self, host, api_key, port=8096, ssl=False, loop=None):
-        """Initialize base class."""
+    def __init__(self, host, api_key, port=8096, ssl=False, loop=None,
+                 session=None):
+        """Initialize base class.
+
+        session: optional aiohttp.ClientSession to use for all requests.
+        If omitted, pyEmby creates its own session on first use and closes
+        it in stop(). A session passed in is never closed by pyEmby.
+        """
         self._host = host
         self._api_key = api_key
         self._port = port
@@ -67,17 +73,18 @@ class EmbyServer(object):
 
         self._api_id = uuid.getnode()
 
-        headers = DEFAULT_HEADERS.copy()
-        headers.update({'x-emby-authorization':
-                        'MediaBrowser Client="pyEmby",'
-                        'Device="HomeAssistant",'
-                        'DeviceId="{}",'
-                        'Version="{}"'.format(
-                            self._api_id, __version__)})
+        self._headers = DEFAULT_HEADERS.copy()
+        self._headers.update({'x-emby-authorization':
+                              'MediaBrowser Client="pyEmby",'
+                              'Device="HomeAssistant",'
+                              'DeviceId="{}",'
+                              'Version="{}"'.format(
+                                  self._api_id, __version__)})
 
-        conn = aiohttp.TCPConnector(verify_ssl=False)
-        self._api_session = aiohttp.ClientSession(
-            connector=conn, headers=headers, loop=self._event_loop)
+        # The session is created lazily (see _get_session) so that the
+        # server object can be constructed outside a running event loop.
+        self._api_session = session
+        self._own_session = session is None
 
         self.wsck = None
 
@@ -88,6 +95,13 @@ class EmbyServer(object):
 
         self._shutdown = False
         self._registered = False
+
+    def _get_session(self):
+        """Return the aiohttp session, creating our own if needed."""
+        if self._own_session and (self._api_session is None
+                                  or self._api_session.closed):
+            self._api_session = aiohttp.ClientSession()
+        return self._api_session
 
     @property
     def unique_id(self):
@@ -171,6 +185,10 @@ class EmbyServer(object):
             await self.wsck.close()
             self.wsck = None
 
+        if self._own_session and self._api_session is not None:
+            await self._api_session.close()
+            self._api_session = None
+
         if self._own_loop:
             _LOGGER.info("Shutting down Emby server loop...")
             self._event_loop.call_soon_threadsafe(self._event_loop.stop)
@@ -214,7 +232,9 @@ class EmbyServer(object):
         post = None
         try:
             post = await asyncio.wait_for(
-                self._api_session.post(url, params=params), DEFAULT_TIMEOUT)
+                self._get_session().post(
+                    url, params=params, headers=self._headers, ssl=False),
+                DEFAULT_TIMEOUT)
             if post.status != 204:
                 _LOGGER.error('Error posting Emby data: %s', post.status)
                 return None
@@ -232,7 +252,9 @@ class EmbyServer(object):
         request = None
         try:
             request = await asyncio.wait_for(
-                self._api_session.get(url, params=params), DEFAULT_TIMEOUT)
+                self._get_session().get(
+                    url, params=params, headers=self._headers, ssl=False),
+                DEFAULT_TIMEOUT)
             if request.status != 200:
                 _LOGGER.error('Error fetching Emby data: %s', request.status)
                 return None
@@ -263,7 +285,8 @@ class EmbyServer(object):
             _LOGGER.debug('Attempting Socket Connection.')
             try:
                 self.wsck = await asyncio.wait_for(
-                    self._api_session.ws_connect(url, heartbeat=300),
+                    self._get_session().ws_connect(
+                        url, heartbeat=300, headers=self._headers, ssl=False),
                     DEFAULT_TIMEOUT)
 
                 # Enable sever session updates:

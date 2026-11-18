@@ -56,6 +56,7 @@ class RequestTestCase(unittest.IsolatedAsyncioTestCase):
 
     def use_session(self, **kwargs):
         self.server._api_session = FakeSession(**kwargs)
+        self.server._own_session = False
         return self.server._api_session
 
 
@@ -66,7 +67,7 @@ class TestApiRequest(RequestTestCase):
         result = await self.server.api_request('http://x/Sessions',
                                                {'api_key': 'k'})
         self.assertEqual(result, [{'Id': '1'}])
-        self.assertEqual(session.calls[0][1], {'params': {'api_key': 'k'}})
+        self.assertEqual(session.calls[0][1]['params'], {'api_key': 'k'})
 
     async def test_bad_status_returns_none(self):
         self.use_session(result=FakeResponse(401))

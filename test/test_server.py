@@ -27,6 +27,9 @@ def make_server():
     server._host = 'emby.local'
     server._port = 8096
     server._ssl = False
+    server._headers = {}
+    server._api_session = None
+    server._own_session = True
     server._sessions = None
     server._devices = {}
     server._new_devices_callbacks = []

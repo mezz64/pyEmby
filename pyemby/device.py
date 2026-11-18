@@ -119,15 +119,17 @@ class EmbyDevice(object):
 
     @property
     def media_artist(self):
-        """Artist of current playing media (Music track only)."""
+        """Artist(s) of current playing media (Music track only).
+
+        Multiple artists are joined into one comma separated string.
+        """
         try:
             artists = self.session['NowPlayingItem']['Artists']
-            if len(artists) > 1:
-                return artists[0]
-            else:
-                return artists
         except KeyError:
             return None
+        if isinstance(artists, str):
+            return artists or None
+        return ', '.join(artist for artist in artists if artist) or None
 
     @property
     def media_album_artist(self):

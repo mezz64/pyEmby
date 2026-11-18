@@ -52,6 +52,5 @@ setup(
     python_requires='>=3.10',
     install_requires=[
         'aiohttp>=3.0',
-        'async_timeout>=3.0',
     ],
 )

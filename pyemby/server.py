@@ -16,7 +16,7 @@ import aiohttp
 from pyemby.device import EmbyDevice
 from pyemby.constants import (
     __version__, DEFAULT_TIMEOUT, DEFAULT_HEADERS, API_URL, SOCKET_URL,
-    RECONNECT_MAX_DELAY,
+    RECONNECT_MAX_DELAY, PYEMBY_CLIENT, PYEMBY_DEVICE_NAME,
     STATE_PAUSED, STATE_PLAYING, STATE_IDLE)
 from pyemby.helpers import deprecated_name, clean_none_dict_values
 
@@ -40,12 +40,17 @@ everything else can be done with normal methods
 class EmbyServer(object):
     """Emby test."""
     def __init__(self, host, api_key, port=8096, ssl=False, loop=None,
-                 session=None):
+                 session=None, device_id=None):
         """Initialize base class.
 
         session: optional aiohttp.ClientSession to use for all requests.
         If omitted, pyEmby creates its own session on first use and closes
         it in stop(). A session passed in is never closed by pyEmby.
+
+        device_id: optional stable ID that pyEmby registers with the server.
+        Defaults to uuid.getnode(), which can change between restarts (for
+        example when a container gets a new network address); each change
+        leaves another stale session and device entry on the server.
         """
         self._host = host
         self._api_key = api_key
@@ -70,14 +75,16 @@ class EmbyServer(object):
         # Enable for asyncio debug logging
         # self._event_loop.set_debug(True)
 
-        self._api_id = uuid.getnode()
+        self._api_id = (str(device_id) if device_id is not None
+                        else uuid.getnode())
 
         self._headers = DEFAULT_HEADERS.copy()
         self._headers.update({'x-emby-authorization':
-                              'MediaBrowser Client="pyEmby",'
-                              'Device="HomeAssistant",'
+                              'MediaBrowser Client="{}",'
+                              'Device="{}",'
                               'DeviceId="{}",'
                               'Version="{}"'.format(
+                                  PYEMBY_CLIENT, PYEMBY_DEVICE_NAME,
                                   self._api_id, __version__)})
 
         # The session is created lazily (see _get_session) so that the
@@ -412,6 +419,22 @@ class EmbyServer(object):
         - SessionEnded
         """
 
+    def _is_pyemby_session(self, session):
+        """Return True if a session belongs to pyEmby rather than a player.
+
+        Matches this instance's own session, any session whose client name
+        starts with "pyEmby" (other or earlier pyEmby instances), and the
+        "HomeAssistant" client/device name pair that Home Assistant's
+        pyEmby sessions have been observed to report.
+        """
+        if str(session.get('DeviceId')) == str(self._api_id):
+            return True
+        client = session.get('Client') or ''
+        if client.lower().startswith(PYEMBY_CLIENT.lower()):
+            return True
+        return (client == PYEMBY_DEVICE_NAME
+                and session.get('DeviceName') == PYEMBY_DEVICE_NAME)
+
     def update_device_list(self, sessions):
         """ Update device list. """
         if not isinstance(sessions, list):
@@ -437,15 +460,19 @@ class EmbyServer(object):
             except KeyError:
                 pass
 
+            if self._is_pyemby_session(device):
+                # pyEmby's own session, or another pyEmby instance's (e.g.
+                # a second Home Assistant). Not a media player.
+                continue
+
             active_devices.append(dev_name)
-            if dev_name not in self._devices and \
-                    device['DeviceId'] != str(self._api_id):
+            if dev_name not in self._devices:
                 _LOGGER.debug('New Emby DeviceID: %s. Adding to device list.',
                               dev_name)
                 new = EmbyDevice(device, self)
                 self._devices[dev_name] = new
                 new_devices.append(new)
-            elif device['DeviceId'] != str(self._api_id):
+            else:
                 # Before we send in new data check for changes to state
                 # to decide if we need to fire the update callback
                 if not self._devices[dev_name].is_active:

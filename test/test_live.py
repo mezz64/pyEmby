@@ -44,6 +44,9 @@ class TestLiveServer(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(self.emby.sessions, list)
         for key, device in self.emby.devices.items():
             self.assertIsInstance(device, EmbyDevice)
+            # pyEmby's own sessions (this or another instance) are hidden.
+            self.assertFalse(self.emby._is_pyemby_session(device.session_raw),
+                             key)
             self.assertEqual(key, '{}.{}'.format(device.unique_id,
                                                  device.client))
             # Every property must be readable on real data.

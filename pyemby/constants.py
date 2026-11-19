@@ -18,6 +18,10 @@ DEFAULT_HEADERS = {
     'Accept': "application/json",
 }
 
+# How pyEmby identifies itself to the server (x-emby-authorization header).
+PYEMBY_CLIENT = 'pyEmby'
+PYEMBY_DEVICE_NAME = 'HomeAssistant'
+
 API_URL = 'api'
 SOCKET_URL = 'socket'
 

@@ -79,6 +79,27 @@ class TestLiveServer(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(self.emby.wsck)
         self.assertFalse(self.emby._socket_task.done())
 
+    async def test_reconnect_reloads_sessions(self):
+        """Dropping the websocket reconnects and reloads the session list
+        (the server sends nothing on its own after a reconnect)."""
+        reloads = []
+        original = self.emby._refresh_sessions
+
+        async def record():
+            reloads.append(self.emby.wsck)
+            await original()
+        self.emby._refresh_sessions = record
+        self.emby._reconnect_delay = lambda fail_count: 0
+
+        self.emby.start()
+        await wait_until(lambda: len(reloads) == 1)
+        first = self.emby.wsck
+        await first.close()  # simulate the connection dropping
+        await wait_until(lambda: len(reloads) == 2)
+        self.assertIsNot(reloads[1], first)
+        self.assertFalse(self.emby._socket_task.done())
+        self.assertTrue(self.emby.devices or self.emby.sessions is not None)
+
     async def test_stop_is_clean(self):
         self.emby.start()
         await wait_until(lambda: self.emby.wsck is not None)

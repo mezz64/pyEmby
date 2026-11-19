@@ -381,6 +381,14 @@ class EmbyServer(object):
 
                 _LOGGER.debug('Socket Connected!')
                 fail_count = 0
+
+                # Emby only pushes session updates when something changes,
+                # so after a (re)connect nothing would arrive to correct
+                # states that went stale while we were disconnected. Reload
+                # the full list now that updates are subscribed: any change
+                # after this point arrives as a message processed below.
+                await self._refresh_sessions()
+
                 while True:
                     msg = await self.wsck.receive()
                     if msg.type == aiohttp.WSMsgType.text:
@@ -414,6 +422,24 @@ class EmbyServer(object):
                     continue
                 else:
                     break
+
+    async def _refresh_sessions(self):
+        """Reload all sessions over HTTP and update the device list.
+
+        A failure is logged and ignored: the websocket stays up and the
+        next session change still arrives as a message.
+        """
+        url = '{}/Sessions'.format(self.construct_url(API_URL))
+        sessions = await self.api_request(url, {'api_key': self._api_key})
+        if sessions is None:
+            _LOGGER.debug('Could not reload sessions after connecting; '
+                          'waiting for the next update instead.')
+            return
+        try:
+            self._sessions = clean_none_dict_values(sessions)
+            self.update_device_list(self._sessions)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception('Error processing reloaded Emby sessions')
 
     @staticmethod
     def _reconnect_delay(fail_count):

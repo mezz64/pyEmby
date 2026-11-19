@@ -22,6 +22,34 @@ from pyemby.helpers import deprecated_name, clean_none_dict_values
 
 _LOGGER = logging.getLogger(__name__)
 
+
+async def _wait_with_timeout(awaitable, timeout):
+    """Await with a timeout, like asyncio.wait_for, without losing cancels.
+
+    On Python 3.11 and earlier, asyncio.wait_for swallows a cancellation
+    that arrives in the same loop iteration as the awaitable finishing: it
+    returns the result (or raises the awaitable's exception) instead of
+    raising CancelledError. pyEmby's retry loops would then keep running
+    after their task was cancelled. asyncio.wait never swallows the
+    caller's cancellation, on any version.
+
+    Raises asyncio.TimeoutError on timeout (the same exception wait_for
+    raises), cancelling the awaitable.
+    """
+    task = asyncio.ensure_future(awaitable)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+    except asyncio.CancelledError:
+        if task.done() and not task.cancelled():
+            task.exception()  # mark retrieved; we are being cancelled
+        task.cancel()
+        raise
+    if not done:
+        task.cancel()
+        await asyncio.wait({task})
+        raise asyncio.TimeoutError()
+    return task.result()
+
 """
 Some general project notes that don't fit anywhere else:
 
@@ -279,7 +307,7 @@ class EmbyServer(object):
         """Make api post request."""
         post = None
         try:
-            post = await asyncio.wait_for(
+            post = await _wait_with_timeout(
                 self._get_session().post(
                     url, params=params, headers=self._headers, ssl=False),
                 DEFAULT_TIMEOUT)
@@ -304,7 +332,7 @@ class EmbyServer(object):
         log = _LOGGER.error if log_errors else _LOGGER.debug
         request = None
         try:
-            request = await asyncio.wait_for(
+            request = await _wait_with_timeout(
                 self._get_session().get(
                     url, params=params, headers=self._headers, ssl=False),
                 DEFAULT_TIMEOUT)
@@ -337,7 +365,7 @@ class EmbyServer(object):
         while True:
             _LOGGER.debug('Attempting Socket Connection.')
             try:
-                self.wsck = await asyncio.wait_for(
+                self.wsck = await _wait_with_timeout(
                     self._get_session().ws_connect(
                         url, heartbeat=300, headers=self._headers, ssl=False),
                     DEFAULT_TIMEOUT)

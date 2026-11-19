@@ -129,7 +129,6 @@ class TestPyEmbySessionsHidden(ServerTestCase):
     HIDDEN = [
         session(str(OWN_API_ID), 'pyEmby', 'HomeAssistant'),
         session(str(OWN_API_ID), 'pyEmby-Test', 'HomeAssistant'),
-        session('77094902115788', 'HomeAssistant', 'HomeAssistant'),
         session('old-node-id', 'pyEmby', 'HomeAssistant'),
         session('other-host', 'pyemby', 'SomeOtherHost'),
     ]
@@ -138,6 +137,10 @@ class TestPyEmbySessionsHidden(ServerTestCase):
         session('cd0822f3', 'Autopulse', 'HomeAssistant'),
         session('web-1', 'Emby Web', 'HomeAssistant'),
         session('ha-tablet', 'HomeAssistant', 'Kitchen Tablet'),
+        # An older pyEmby's websocket session, labeled by Emby with the API
+        # key's name. Indistinguishable from any client using a key with
+        # that name, so it is left alone (it ages out after upgrading).
+        session('77094902115788', 'HomeAssistant', 'HomeAssistant'),
     ]
 
     def test_only_real_players_become_devices(self):

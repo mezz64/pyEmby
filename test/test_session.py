@@ -5,7 +5,7 @@ import unittest
 
 import aiohttp
 
-from pyemby import EmbyServer
+from pyemby import EmbyDevice, EmbyServer
 
 from test.test_requests import FakeResponse, FakeSession
 
@@ -76,3 +76,83 @@ class TestExternalSession(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestApiKeyNotInUrls(unittest.IsolatedAsyncioTestCase):
+    """The API key travels in the X-Emby-Token header, never in the URL.
+
+    With ?api_key= in the websocket URL, Emby labels pyEmby's session with
+    the API key's name instead of Client="pyEmby", so it could not be
+    recognized and hidden. It also keeps the key out of URLs and logs.
+    """
+
+    async def asyncSetUp(self):
+        self.session = RecordingSession()
+        self.server = EmbyServer('emby.local', 'secret',
+                                 loop=asyncio.get_running_loop(),
+                                 session=self.session)
+        # register() starts the websocket task; always shut it down.
+        self.addAsyncCleanup(self.server.stop)
+
+    def assert_clean(self, call):
+        url, kwargs = call
+        self.assertNotIn('secret', url)
+        self.assertNotIn('api_key', kwargs.get('params') or {})
+        self.assertEqual(kwargs['headers']['X-Emby-Token'], 'secret')
+        self.assertIn('Client="pyEmby"',
+                      kwargs['headers']['x-emby-authorization'])
+
+    async def test_register_request(self):
+        await self.server.register()
+        self.assert_clean(self.session.calls['get'][0])
+
+    async def test_websocket_url(self):
+        self.server._registered = True
+        self.server._shutdown = True  # one attempt only
+        await self.server.socket_connection()
+        url, _ = self.session.calls['ws_connect'][0]
+        self.assertTrue(url.endswith('?DeviceID={}'.format(
+            self.server.unique_id)), url)
+        self.assert_clean(self.session.calls['ws_connect'][0])
+
+    async def test_playback_command(self):
+        device = EmbyDevice({'Id': 'sess-1'}, self.server)
+        await device.media_seek(30)
+        url, kwargs = self.session.calls['post'][0]
+        self.assert_clean(self.session.calls['post'][0])
+        self.assertEqual(kwargs['params']['SeekPositionTicks'], 300000000)
+
+    async def test_latest_items(self):
+        self.server._registered = True
+        await self.server.async_get_latest_items('user-1')
+        self.assert_clean(self.session.calls['get'][0])
+
+    def test_image_url_still_carries_key(self):
+        """Artwork URLs are fetched separately (e.g. by Home Assistant's
+        image proxy) without pyEmby's headers, so they keep the key."""
+        device = EmbyDevice({
+            'PlayState': {}, 'NowPlayingItem': {
+                'Id': 'item-1', 'ImageTags': {'Primary': 'tag'}}},
+            self.server)
+        self.assertIn('api_key=secret', device.media_image_url)
+
+
+class RecordingSession:
+    """Fake aiohttp session that records every call by method."""
+
+    def __init__(self):
+        self.calls = {'get': [], 'post': [], 'ws_connect': []}
+        self.ws_exc = aiohttp.ClientConnectionError('no websocket in tests')
+        self.closed = False
+
+    async def get(self, url, **kwargs):
+        self.calls['get'].append((url, kwargs))
+        return FakeResponse(200, [])
+
+    async def post(self, url, **kwargs):
+        self.calls['post'].append((url, kwargs))
+        return FakeResponse(204)
+
+    async def ws_connect(self, url, **kwargs):
+        self.calls['ws_connect'].append((url, kwargs))
+        raise self.ws_exc

@@ -78,7 +78,13 @@ class EmbyServer(object):
         self._api_id = (str(device_id) if device_id is not None
                         else uuid.getnode())
 
+        # The API key is sent as a header, never in the URL. Besides keeping
+        # it out of URLs and server logs, this matters for how Emby labels
+        # our websocket session: with ?api_key= in the URL, Emby names the
+        # session after the API key (e.g. "HomeAssistant") instead of using
+        # Client="pyEmby" below, so it can't be recognized as ours.
         self._headers = DEFAULT_HEADERS.copy()
+        self._headers['X-Emby-Token'] = api_key
         self._headers.update({'x-emby-authorization':
                               'MediaBrowser Client="{}",'
                               'Device="{}",'
@@ -263,7 +269,7 @@ class EmbyServer(object):
         Returns True on success, False if the server could not be reached.
         """
         url = '{}/Sessions'.format(self.construct_url(API_URL))
-        params = {'api_key': self._api_key}
+        params = {}
 
         reg = await self.api_request(url, params, log_errors=log_errors)
         if reg is None:
@@ -337,8 +343,8 @@ class EmbyServer(object):
             _LOGGER.error('Client not registered, cannot start socket.')
             return
 
-        url = '{}?DeviceID={}&api_key={}'.format(
-            self.construct_url(SOCKET_URL), self._api_id, self._api_key)
+        url = '{}?DeviceID={}'.format(
+            self.construct_url(SOCKET_URL), self._api_id)
 
         fail_count = 0
         while True:
@@ -422,18 +428,21 @@ class EmbyServer(object):
     def _is_pyemby_session(self, session):
         """Return True if a session belongs to pyEmby rather than a player.
 
-        Matches this instance's own session, any session whose client name
-        starts with "pyEmby" (other or earlier pyEmby instances), and the
-        "HomeAssistant" client/device name pair that Home Assistant's
-        pyEmby sessions have been observed to report.
+        Matches this instance's own session and any session whose client
+        name starts with "pyEmby" (other or earlier pyEmby instances).
+
+        Device names are deliberately not used: Emby files requests from
+        clients that don't identify themselves under one shared fallback
+        device whose name is whatever was last set on it, so unrelated
+        apps can end up reporting pyEmby's device name. pyEmby versions
+        before the X-Emby-Token header change report the API key's name as
+        their client and can't be recognized; their sessions age out once
+        they are upgraded.
         """
         if str(session.get('DeviceId')) == str(self._api_id):
             return True
         client = session.get('Client') or ''
-        if client.lower().startswith(PYEMBY_CLIENT.lower()):
-            return True
-        return (client == PYEMBY_DEVICE_NAME
-                and session.get('DeviceName') == PYEMBY_DEVICE_NAME)
+        return client.lower().startswith(PYEMBY_CLIENT.lower())
 
     def update_device_list(self, sessions):
         """ Update device list. """
@@ -562,8 +571,7 @@ class EmbyServer(object):
 
         url = '{0}/Users/{1}/Items/Latest'.format(
             self.construct_url(API_URL), user_id)
-        params = {'api_key': self._api_key,
-                  'IncludeItemTypes': include_item_types,
+        params = {'IncludeItemTypes': include_item_types,
                   'Limit': limit,
                   'IsPlayed': is_played}
 

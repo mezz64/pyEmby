@@ -227,7 +227,7 @@ class EmbyDevice(object):
         """ Return current playstate of the device. """
         if self.is_active:
             if 'NowPlayingItem' in self.session:
-                if self.session['PlayState']['IsPaused']:
+                if self.session.get('PlayState', {}).get('IsPaused'):
                     return STATE_PAUSED
                 else:
                     return STATE_PLAYING
@@ -247,7 +247,7 @@ class EmbyDevice(object):
     @property
     def supports_remote_control(self):
         """ Return remote control status. """
-        return self.session['SupportsRemoteControl']
+        return self.session.get('SupportsRemoteControl', False)
 
     async def set_playstate(self, state, pos=0):
         """ Send media commands to server. """

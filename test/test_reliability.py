@@ -113,9 +113,11 @@ class TestRegistrationRetry(ReliabilityTestCase):
         server.start()
 
         await self.wait_for(lambda: server._registered)
-        self.assertEqual(session.get_calls, 4)
         self.assertIn(DEV_NAME, server.devices)
         await self.wait_for(lambda: session.ws_calls == 1)
+        # 4 registration attempts, then 1 session reload once the
+        # websocket is connected.
+        await self.wait_for(lambda: session.get_calls == 5)
 
     async def test_retry_logs_one_warning_not_one_per_attempt(self):
         session = ScriptedSession(get_results=[FakeResponse(503)])
@@ -266,6 +268,92 @@ class TestEventDrivenServer(ReliabilityTestCase):
         websocket.feed(sessions_msg(own, IDLE_SESSION))
         await self.wait_for(lambda: DEV_NAME in server.devices)
         self.assertEqual(list(server.devices), [DEV_NAME])
+
+
+CLOSED = aiohttp.WSMessage(aiohttp.WSMsgType.CLOSED, None, None)
+
+
+class TestReloadOnReconnect(ReliabilityTestCase):
+    """Sessions are reloaded over HTTP every time the websocket connects.
+
+    Emby only pushes session updates when something changes, and sends
+    nothing on (re)connect. Without a reload, anything that changed while
+    disconnected would stay wrong until the next change.
+    """
+
+    async def connect(self, *get_results):
+        """Start with two websockets: the first is dropped by drop()."""
+        self.first, self.second = ScriptedWebSocket(), ScriptedWebSocket()
+        self.session = ScriptedSession(
+            get_results=[FakeResponse(200, copy.deepcopy(r))
+                         if isinstance(r, list) else r
+                         for r in get_results],
+            websockets=[self.first, self.second])
+        self.server = self.make_server(self.session)
+        self.new_calls, self.stale_calls, self.update_calls = [], [], []
+        self.server.add_new_devices_callback(self.new_calls.append)
+        self.server.add_stale_devices_callback(self.stale_calls.append)
+        self.server.add_update_callback(self.update_calls.append, DEV_NAME)
+        self.server.start()
+        await self.wait_for(lambda: self.session.ws_calls == 1)
+        await self.wait_for(lambda: self.session.get_calls == 2)
+
+    async def drop(self):
+        """Drop the first websocket and wait for the reconnect's reload."""
+        self.first.feed(CLOSED)
+        await self.wait_for(lambda: self.session.ws_calls == 2)
+        await self.wait_for(lambda: self.session.get_calls == 3)
+        await asyncio.sleep(0.01)  # let queued callbacks run
+
+    def playing(self):
+        return dict(copy.deepcopy(IDLE_SESSION), NowPlayingItem={
+            'Id': 'i1', 'Name': 'Pilot', 'Type': 'Episode'})
+
+    async def test_first_connect_reloads(self):
+        """A change between registering and subscribing is not lost."""
+        await self.connect([IDLE_SESSION], [self.playing()])
+        await self.wait_for(lambda: self.update_calls)
+        self.assertEqual(self.server.devices[DEV_NAME].state, STATE_PLAYING)
+
+    async def test_change_during_outage_is_picked_up(self):
+        await self.connect([IDLE_SESSION], [IDLE_SESSION], [self.playing()])
+        self.assertEqual(self.update_calls, [])
+        await self.drop()
+        self.assertEqual(self.server.devices[DEV_NAME].state, STATE_PLAYING)
+        self.assertEqual(self.update_calls, [DEV_NAME])
+
+    async def test_device_gone_during_outage_is_marked_stale(self):
+        await self.connect([IDLE_SESSION], [IDLE_SESSION], [])
+        await self.drop()
+        self.assertEqual(self.stale_calls, [DEV_NAME])
+        self.assertFalse(self.server.devices[DEV_NAME].is_active)
+
+    async def test_device_added_during_outage(self):
+        await self.connect([], [], [IDLE_SESSION])
+        self.assertNotIn(DEV_NAME, self.server.devices)
+        await self.drop()
+        self.assertIn(DEV_NAME, self.server.devices)
+        self.assertTrue(self.new_calls)
+
+    async def test_failed_reload_keeps_connection(self):
+        await self.connect([IDLE_SESSION], [IDLE_SESSION], FakeResponse(503))
+        await self.drop()
+        self.assertTrue(self.server.devices[DEV_NAME].is_active)
+        self.assertEqual(self.session.ws_calls, 2)  # no extra reconnect
+        self.assertFalse(self.server._socket_task.done())
+        # Updates still arrive normally on the new connection.
+        self.second.feed(sessions_msg(self.playing()))
+        await self.wait_for(lambda: self.update_calls)
+        self.assertEqual(self.server.devices[DEV_NAME].state, STATE_PLAYING)
+
+    async def test_update_arriving_after_reload_wins(self):
+        """A push queued while the reload was in flight is applied after
+        it, so the newest state is what remains."""
+        await self.connect([IDLE_SESSION], [IDLE_SESSION], [IDLE_SESSION])
+        self.second.feed(sessions_msg(self.playing()))
+        await self.drop()
+        await self.wait_for(lambda: self.server.devices[DEV_NAME].state
+                            == STATE_PLAYING)
 
 
 class TestTolerantParsing(unittest.TestCase):

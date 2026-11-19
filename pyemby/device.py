@@ -253,7 +253,7 @@ class EmbyDevice(object):
         """ Send media commands to server. """
         url = '{}/Sessions/{}/Playing/{}'.format(
             self.server.construct_url(API_URL), self.session_id, state)
-        params = {'api_key': self.server.api_key}
+        params = {}
 
         if state == 'seek':
             params['SeekPositionTicks'] = int(pos * 10000000)

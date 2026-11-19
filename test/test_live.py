@@ -44,6 +44,9 @@ class TestLiveServer(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(self.emby.sessions, list)
         for key, device in self.emby.devices.items():
             self.assertIsInstance(device, EmbyDevice)
+            # pyEmby's own sessions (this or another instance) are hidden.
+            self.assertFalse(self.emby._is_pyemby_session(device.session_raw),
+                             key)
             self.assertEqual(key, '{}.{}'.format(device.unique_id,
                                                  device.client))
             # Every property must be readable on real data.
@@ -72,8 +75,7 @@ class TestLiveServer(unittest.IsolatedAsyncioTestCase):
         # (its reported capabilities) so an update is sent.
         url = '{}/Sessions/Capabilities'.format(
             self.emby.construct_url(API_URL))
-        await self.emby.api_post(url, {'api_key': API_KEY,
-                                       'PlayableMediaTypes': '',
+        await self.emby.api_post(url, {'PlayableMediaTypes': '',
                                        'SupportsMediaControl': 'false'})
         await wait_until(lambda: any('"Sessions"' in m for m in received))
         self.assertIsNotNone(self.emby.wsck)
